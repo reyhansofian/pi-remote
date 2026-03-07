@@ -1,4 +1,23 @@
 node_modules/
 dist/
-*.tsbuildinfo
+*.log
 .DS_Store
+*.tsbuildinfo
+packages/*/dist/
+
+# Environment
+.env
+
+# Editor files
+.vscode/
+.zed/
+.idea/
+*.swp
+*.swo
+*~
+
+# Package specific
+.npm/
+coverage/
+.nyc_output/
+package-lock.json

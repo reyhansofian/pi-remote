@@ -2,11 +2,27 @@
 	"name": "pi-mono-extensions",
 	"version": "0.0.0",
 	"private": true,
+	"type": "module",
 	"description": "Monorepo for pi extensions",
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		"packages/remote/web"
 	],
-	"scripts": {},
+	"scripts": {
+		"clean": "npm run clean --workspaces --if-present",
+		"build": "npm run build --workspaces --if-present",
+		"dev": "npm run dev --workspaces --if-present",
+		"check": "biome check --write --error-on-warnings . && tsc --noEmit",
+		"test": "npm run test --workspaces --if-present",
+		"prepare": "husky"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@types/node": "^22.10.5",
+		"husky": "^9.1.7",
+		"shx": "^0.4.0",
+		"typescript": "^5.9.2"
+	},
 	"author": "Q.Roy <ruanqisevik@gmail.com>",
 	"license": "MIT",
 	"repository": {

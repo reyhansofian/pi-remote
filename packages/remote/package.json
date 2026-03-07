@@ -1,5 +1,5 @@
 {
-	"name": "@ruanqisevik/pi-remote",
+	"name": "@q.roy/pi-remote",
 	"version": "0.1.0",
 	"description": "Remote terminal access for pi via WebSocket and browser",
 	"type": "module",
