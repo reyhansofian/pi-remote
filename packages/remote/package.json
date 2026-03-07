@@ -1,6 +1,6 @@
 {
 	"name": "@q.roy/pi-remote",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Remote terminal access for pi via WebSocket and browser",
 	"type": "module",
 	"bin": {
@@ -48,6 +48,7 @@
 		"typescript": "^5.7.3"
 	},
 	"keywords": [
+		"pi-package",
 		"pi",
 		"remote",
 		"terminal",
