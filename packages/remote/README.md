@@ -20,10 +20,10 @@ Remote terminal access for pi via WebSocket with Tailscale integration. Connect 
 ## Screenshots
 
 ### Browser — Remote access modal
-![Remote access modal](docs/remote-access-modal.png)
+<img src="https://raw.githubusercontent.com/noahsaso/pi-remote/main/packages/remote/docs/remote-access-modal.png" width="360" alt="Remote access modal" />
 
 ### TUI — Widget with Tailscale, LAN, and Token
-![TUI widget](docs/tui-widget.png)
+![TUI widget](https://raw.githubusercontent.com/noahsaso/pi-remote/main/packages/remote/docs/tui-widget.png)
 
 ## Usage as a pi Extension
 

@@ -1,6 +1,6 @@
 {
 	"name": "@noahsaso/pi-remote",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Remote terminal access for pi via WebSocket and browser, with Tailscale integration",
 	"type": "module",
 	"bin": {
