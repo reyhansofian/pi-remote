@@ -10,6 +10,7 @@ Remote terminal access for pi via WebSocket. Connect to your pi session from mob
 - **Token authentication** - Secure LAN access with auto-generated tokens
 - **QR code** - Scan to connect instantly from mobile
 - **`/remote` command** - Restart pi in remote mode from within a running session
+- **Tailscale integration** - Automatically serves over HTTPS on your tailnet with a unique session subpath
 
 ## Usage as a pi Extension
 
@@ -153,14 +154,30 @@ cleanup();
 |----------|-------------|
 | `PORT` | HTTP server port (default: `7009`) |
 | `PI_REMOTE_URL` | Set automatically when running inside `pi-remote`; the extension uses this to show the URL widget |
+| `PI_REMOTE_TAILSCALE_URL` | Set automatically when Tailscale serve is active; shown in the TUI widget |
 
 ---
+
+## Tailscale Integration
+
+When [Tailscale](https://tailscale.com) is installed and running, pi-remote automatically:
+
+1. Detects the Tailscale binary (checks PATH, then known locations for macOS/Linux)
+2. Gets the machine's Tailscale hostname via `tailscale status --json`
+3. Runs `tailscale serve --bg --https 443 --set-path /pi-{session-id} http://localhost:{port}`
+4. Displays the full URL with auth token: `https://your-host.tailnet.ts.net/pi-abc123?token=...`
+5. Cleans up the specific serve route on exit (without affecting other `tailscale serve` routes)
+
+**Graceful fallback:** If Tailscale is not installed, not running, or the serve command fails, pi-remote continues normally with just the LAN URL. No errors are shown.
+
+**Multiple sessions:** Each session gets a unique `/pi-{8-hex-chars}` subpath, so multiple remote sessions can coexist on the same machine.
 
 ## Security
 
 - **Token-based auth** — Random 16-byte token required for all remote connections
 - **Localhost exempt** — `127.0.0.1` connections skip token verification
 - **LAN only** — Designed for local network use, not intended to be exposed to the internet
+- **Tailscale** — When using Tailscale, traffic is encrypted end-to-end within your tailnet using auto-provisioned TLS certificates
 
 ---
 
