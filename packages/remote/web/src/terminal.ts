@@ -94,6 +94,7 @@ export class TerminalView {
 		} else {
 			requestAnimationFrame(() => {
 				this.fitAddon.fit();
+				this.sendResize();
 				this.terminal.focus();
 			});
 			this.setupResizeObserver();
@@ -379,6 +380,9 @@ export class TerminalView {
 	onScroll(cb: () => void): void {
 		this.terminal.onScroll(cb);
 		this.terminal.onWriteParsed(cb);
+		// xterm.js onScroll may not fire for mouse wheel — listen on the DOM too
+		this.container.addEventListener("wheel", () => requestAnimationFrame(cb), { passive: true });
+		this.container.addEventListener("touchend", () => requestAnimationFrame(cb), { passive: true });
 	}
 
 	// -------------------------------------------------------------------------

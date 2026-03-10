@@ -127,6 +127,15 @@ export async function spawnInPty(options: SpawnOptions): Promise<void> {
 		process.stdin.on("data", (data: Buffer) => {
 			ptyProcess?.write(data.toString());
 		});
+
+		// Resize PTY when local terminal is resized
+		process.stdout.on("resize", () => {
+			const newCols = process.stdout.columns;
+			const newRows = process.stdout.rows;
+			if (newCols && newRows) {
+				resizePty(newCols, newRows);
+			}
+		});
 	}
 }
 
