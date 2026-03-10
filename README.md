@@ -1,6 +1,6 @@
-# pi-mono-extensions
+# pi-remote
 
-Monorepo for pi extensions. Fork of [@q.roy/pi-remote](https://github.com/ruanqisevik/pi-mono-extensions) with Tailscale integration.
+Fork of [@q.roy/pi-remote](https://github.com/ruanqisevik/pi-mono-extensions) with Tailscale integration, token auth enforcement, and UI improvements.
 
 ## Packages
 

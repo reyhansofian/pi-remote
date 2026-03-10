@@ -36,17 +36,15 @@ Add to `~/.pi/agent/settings.json`:
 ```json
 {
   "extensions": [
-    "~/path/to/pi-mono-extensions/packages/remote"
+    "~/path/to/pi-remote/packages/remote"
   ]
 }
 ```
 
-Or install from npm and reference the package:
+Or install from npm:
 
-```json
-{
-  "packages": ["@noahsaso/pi-remote"]
-}
+```bash
+pi install npm:@noahsaso/pi-remote
 ```
 
 ### Project-local
@@ -56,7 +54,7 @@ Add to `.pi/settings.json` in your project root:
 ```json
 {
   "extensions": [
-    "~/path/to/pi-mono-extensions/packages/remote"
+    "~/path/to/pi-remote/packages/remote"
   ]
 }
 ```
@@ -64,7 +62,7 @@ Add to `.pi/settings.json` in your project root:
 ### Temporary (one-off)
 
 ```bash
-pi -e ~/path/to/pi-mono-extensions/packages/remote/extension/index.ts
+pi -e ~/path/to/pi-remote/packages/remote/extension/index.ts
 ```
 
 ### Using `/remote` inside pi
