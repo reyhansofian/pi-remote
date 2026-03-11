@@ -9,11 +9,11 @@ Remote terminal access for pi via WebSocket with Tailscale integration. Connect 
 - **Mobile-first** - Touch scroll with momentum, virtual keybar (arrows, Ctrl+C, etc.)
 - **Token authentication** - All connections require token auth (HTTP, WebSocket, API)
 - **Auth modal** - Browser prompts for token if missing/invalid, with error feedback on retry
-- **QR code** - Scan to connect instantly from mobile
+- **QR code** - Prints in the launching terminal and appears in the browser overlay for easy mobile scan
 - **`/remote` command** - Restart pi in remote mode from within a running session
 - **Tailscale integration** - Automatically serves over HTTPS on your tailnet with a unique session subpath
 - **Discovery service** - Lists all active remote sessions at `/pi/` with a card UI; auto-starts on first session, auto-shuts down on last
-- **TUI widget** - Shows Tailscale URL, LAN URL, token, and all-sessions link in a bordered card above the editor
+- **TUI widget** - Optional remote info widget (hidden by default, toggle with `/remote:widget`) plus QR code rendered as chat output
 - **Session ended overlay** - Browser shows a modal when the remote session exits
 - **Scroll-to-bottom button** - Appears in the header when scrolled up
 - **Styled error pages** - Dark themed 403/404 pages matching the app style
@@ -72,15 +72,18 @@ Once the extension is loaded, run `/remote` in pi:
 
 ```
 /remote
+/remote https://example.com/demo
 ```
 
 This will:
 1. Save your current session
 2. Shut down the current pi process
 3. Restart pi wrapped in a PTY with a WebSocket server
-4. Display a QR code and URL — scan from mobile or open in a browser
+4. Print a QR code and URL in the launching terminal — scan from mobile or open in a browser
 
-When running inside a remote session, a persistent widget above the editor shows the remote URL.
+If you pass a URL argument, that URL is used for the QR code only (useful for demos), while the actual remote session still uses the real LAN/Tailscale URL.
+
+When running inside a remote session, the QR code is shown in chat output. The compact remote info widget is hidden by default and can be toggled with `/remote:widget`.
 
 ---
 
@@ -134,7 +137,7 @@ PORT=8080 pi-remote
 
 | Path | Description |
 |------|-------------|
-| `extension/index.ts` | Pi extension entry — registers `/remote` command and bordered TUI widget (Tailscale, LAN, Token, All sessions) |
+| `extension/index.ts` | Pi extension entry — registers `/remote`, `/remote:widget`, an optional TUI widget, and QR chat output |
 | `src/cli.ts` | `pi-remote` binary entry point |
 | `src/discovery.ts` | Discovery service — session registry, card-based web UI, auto-shutdown |
 | `src/discovery-main.ts` | Entry point for the detached discovery process |
