@@ -10,6 +10,7 @@
 import { execSync, spawn, spawnSync } from "node:child_process";
 import { randomBytes as cryptoRandomBytes } from "node:crypto";
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,10 @@ import { setupTerminalWebSocket } from "./ws.js";
 export { getAccessToken, getLocalUrl, getPort };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const qrcodeTerminal = require("qrcode-terminal") as {
+	generate: (input: string, options: { small?: boolean }, callback: (output: string) => void) => void;
+};
 const DISCOVERY_URL = `http://127.0.0.1:${DISCOVERY_PORT}`;
 
 // ---------- Discovery client ----------
@@ -94,6 +99,26 @@ async function deregisterSession(sessionId: string): Promise<void> {
 /** Generate a short session ID for the serve path */
 function generateSessionId(): string {
 	return cryptoRandomBytes(4).toString("hex"); // 8 hex chars
+}
+
+function renderTerminalQr(url: string): string {
+	let rendered = "";
+	qrcodeTerminal.generate(url, { small: true }, (output) => {
+		rendered = output;
+	});
+	return rendered;
+}
+
+function printRemoteAccessInfo(primaryUrl: string, lanUrl: string, tailscaleUrl: string | null): void {
+	process.stderr.write(`\n\x1b[1;36m[remote]\x1b[0m Scan or open: ${primaryUrl}\n`);
+	if (tailscaleUrl && tailscaleUrl !== lanUrl) {
+		process.stderr.write(`\x1b[1;36m[remote]\x1b[0m LAN fallback: ${lanUrl}\n`);
+	}
+
+	const qr = renderTerminalQr(primaryUrl);
+	if (qr) {
+		process.stderr.write(`${qr}\n`);
+	}
 }
 
 // ---------- Public API ----------
@@ -207,6 +232,8 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 		...(tailscaleUrl ? { PI_REMOTE_TAILSCALE_URL: tailscaleUrl } : {}),
 		...(discoveryUrl ? { PI_REMOTE_DISCOVERY_URL: discoveryUrl } : {}),
 	};
+
+	printRemoteAccessInfo(tailscaleUrl ?? url, url, tailscaleUrl);
 
 	// 7. Spawn pi in the PTY with local terminal attached
 	const cols = process.stdout.columns || 120;

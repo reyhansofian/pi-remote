@@ -11,10 +11,17 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Box, Text } from "@mariozechner/pi-tui";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const qrcodeTerminal = require("qrcode-terminal") as {
+	generate: (input: string, options: { small?: boolean }, callback: (output: string) => void) => void;
+};
+const REMOTE_QR_MESSAGE_TYPE = "remote-qr";
 
 function resolvePiRemoteBin(): string {
 	const localBin = join(__dirname, "..", "dist", "cli.js");
@@ -40,17 +47,100 @@ function resolvePiBin(): string {
 	throw new Error("Could not find pi binary on PATH.");
 }
 
+function renderQrLines(url: string): string[] {
+	let rendered = "";
+	qrcodeTerminal.generate(url, { small: true }, (output) => {
+		rendered = output;
+	});
+	return rendered
+		.trimEnd()
+		.split("\n")
+		.filter((line) => line.length > 0)
+		.map((line) => `  ${line}`);
+}
+
+function stripAnsi(text: string): string {
+	return text.replace(/\x1B\[[0-9;]*m/g, "");
+}
+
+function buildBorderedWidget(title: string, contentLines: string[]): string[] {
+	const innerWidth = Math.max(
+		title.length + 2,
+		...contentLines.map((line) => stripAnsi(line).length),
+	);
+	const topBorder = `\x1b[90m╭ ${title} ${"─".repeat(Math.max(0, innerWidth - title.length - 2))}╮\x1b[0m`;
+	const bottomBorder = `\x1b[90m╰${"─".repeat(innerWidth + 2)}╯\x1b[0m`;
+	const body = contentLines.map((line) => {
+		const visible = stripAnsi(line).length;
+		return `\x1b[90m│\x1b[0m${line}${" ".repeat(Math.max(0, innerWidth - visible))}\x1b[90m│\x1b[0m`;
+	});
+	return [topBorder, ...body, bottomBorder];
+}
+
+function buildRemoteQrMessage(primaryUrl: string): string {
+	return ["Scan to open on mobile:", "", ...renderQrLines(primaryUrl)].join("\n");
+}
+
+function getRemoteInfo() {
+	const remoteUrl = process.env.PI_REMOTE_URL;
+	if (!remoteUrl) return null;
+	const tailscaleUrl = process.env.PI_REMOTE_TAILSCALE_URL;
+	const discoveryUrl = process.env.PI_REMOTE_DISCOVERY_URL;
+	const primaryUrl = tailscaleUrl ?? remoteUrl;
+	const tokenMatch = primaryUrl.match(/[?&]token=([^&]+)/);
+	return {
+		remoteUrl,
+		tailscaleUrl,
+		discoveryUrl,
+		primaryUrl,
+		token: tokenMatch?.[1],
+	};
+}
+
+function buildRemoteWidgetLines(info: NonNullable<ReturnType<typeof getRemoteInfo>>): string[] {
+	const contentLines: string[] = [];
+	if (info.tailscaleUrl) {
+		contentLines.push("  \x1b[1;35mTailscale:\x1b[0m " + info.tailscaleUrl);
+	}
+	contentLines.push("  \x1b[1;36mLAN:\x1b[0m " + info.remoteUrl);
+	if (info.token) {
+		contentLines.push("  \x1b[1;33mToken:\x1b[0m " + info.token);
+	}
+	if (info.discoveryUrl) {
+		contentLines.push("  \x1b[1;32mAll sessions:\x1b[0m " + info.discoveryUrl);
+	}
+	return buildBorderedWidget("Remote access", contentLines);
+}
+
 export default function (pi: ExtensionAPI) {
 	let pendingAction: "remote" | "end-remote" | null = null;
 	let sessionFileForAction: string | undefined;
+	let pendingQrOverrideUrl: string | undefined;
+	let widgetVisible = false;
+
+	pi.registerMessageRenderer(REMOTE_QR_MESSAGE_TYPE, (message, _options, theme) => {
+		const content = typeof message.content === "string" ? message.content : "";
+		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+		box.addChild(new Text(`${theme.fg("accent", theme.bold("[REMOTE QR]"))}\n${content}`, 0, 0));
+		return box;
+	});
 
 	const isRemoteSession = !!process.env.PI_REMOTE_URL;
+
+	const updateRemoteWidget = (ctx: { ui: { setWidget: (key: string, content: string[] | undefined) => void } }) => {
+		const info = getRemoteInfo();
+		if (!info || !widgetVisible) {
+			ctx.ui.setWidget("remote-url", undefined);
+			return;
+		}
+		ctx.ui.setWidget("remote-url", buildRemoteWidgetLines(info));
+	};
 
 	if (!isRemoteSession) {
 		// ---------- /remote command (only when NOT in remote mode) ----------
 		pi.registerCommand("remote", {
-			description: "Start remote access server (share session via browser)",
-			handler: async (_args, ctx) => {
+			description: "Start remote access server (share session via browser). Optional: /remote <qr-url> to override the QR code target.",
+			handler: async (args, ctx) => {
 				if (!ctx.hasUI) {
 					ctx.ui.notify("Remote mode is only available in interactive mode.", "error");
 					return;
@@ -59,9 +149,15 @@ export default function (pi: ExtensionAPI) {
 				await ctx.waitForIdle();
 
 				sessionFileForAction = ctx.sessionManager.getSessionFile();
+				pendingQrOverrideUrl = args.trim() || undefined;
 				pendingAction = "remote";
 
-				ctx.ui.notify("Restarting pi in remote mode. Your session will be preserved.", "info");
+				ctx.ui.notify(
+					pendingQrOverrideUrl
+						? `Restarting pi in remote mode with QR override: ${pendingQrOverrideUrl}`
+						: "Restarting pi in remote mode. Your session will be preserved.",
+					"info",
+				);
 				ctx.shutdown();
 			},
 		});
@@ -79,6 +175,29 @@ export default function (pi: ExtensionAPI) {
 				ctx.shutdown();
 			},
 		});
+
+		pi.registerCommand("remote:widget", {
+			description: "Show, hide, or toggle the remote info widget",
+			handler: async (args, ctx) => {
+				const mode = args.trim().toLowerCase();
+				if (mode === "on" || mode === "show") {
+					widgetVisible = true;
+				} else if (mode === "off" || mode === "hide") {
+					widgetVisible = false;
+				} else if (mode === "" || mode === "toggle") {
+					widgetVisible = !widgetVisible;
+				} else if (mode === "status") {
+					ctx.ui.notify(`Remote widget is ${widgetVisible ? "shown" : "hidden"}.`, "info");
+					return;
+				} else {
+					ctx.ui.notify("Usage: /remote:widget [on|off|toggle|status]", "warning");
+					return;
+				}
+
+				updateRemoteWidget(ctx);
+				ctx.ui.notify(`Remote widget ${widgetVisible ? "shown" : "hidden"}.`, "info");
+			},
+		});
 	}
 
 	pi.on("session_shutdown", async () => {
@@ -94,6 +213,12 @@ export default function (pi: ExtensionAPI) {
 			const isJs = bin.endsWith(".js");
 			const command = isJs ? process.execPath : bin;
 			const args = isJs ? [bin, "--", ...piArgs] : ["--", ...piArgs];
+			const childEnv = { ...(process.env as Record<string, string>) };
+			if (pendingQrOverrideUrl) {
+				childEnv.PI_REMOTE_QR_OVERRIDE_URL = pendingQrOverrideUrl;
+			} else {
+				delete childEnv.PI_REMOTE_QR_OVERRIDE_URL;
+			}
 
 			const origExit = process.exit;
 			process.exit = ((_code?: number) => {
@@ -102,7 +227,7 @@ export default function (pi: ExtensionAPI) {
 					const result = spawnSync(command, args, {
 						stdio: "inherit",
 						cwd: process.cwd(),
-						env: process.env as Record<string, string>,
+						env: childEnv,
 					});
 					origExit(result.status ?? 1);
 				} catch {
@@ -120,6 +245,7 @@ export default function (pi: ExtensionAPI) {
 				delete cleanEnv.PI_REMOTE_TAILSCALE_URL;
 				delete cleanEnv.PI_REMOTE_DISCOVERY_URL;
 				delete cleanEnv.PI_REMOTE_RESTART_FILE;
+				delete cleanEnv.PI_REMOTE_QR_OVERRIDE_URL;
 
 				writeFileSync(
 					restartFile,
@@ -133,31 +259,23 @@ export default function (pi: ExtensionAPI) {
 	// ---------- Remote URL widget ----------
 
 	pi.on("session_start", async (_event, ctx) => {
-		const remoteUrl = process.env.PI_REMOTE_URL;
-		if (!remoteUrl) return;
+		const info = getRemoteInfo();
+		if (!info) return;
+		const qrUrl = process.env.PI_REMOTE_QR_OVERRIDE_URL || info.primaryUrl;
 
-		const tailscaleUrl = process.env.PI_REMOTE_TAILSCALE_URL;
-		const discoveryUrl = process.env.PI_REMOTE_DISCOVERY_URL;
-		const contentLines: string[] = [];
-		if (tailscaleUrl) {
-			contentLines.push("  \x1b[1;35mTailscale:\x1b[0m " + tailscaleUrl);
-		}
-		contentLines.push("  \x1b[1;36mLAN:\x1b[0m " + remoteUrl);
+		updateRemoteWidget(ctx);
 
-		// Extract token from the URL
-		const tokenMatch = remoteUrl.match(/[?&]token=([^&]+)/);
-		if (tokenMatch) {
-			contentLines.push("  \x1b[1;33mToken:\x1b[0m " + tokenMatch[1]);
-		}
-		if (discoveryUrl) {
-			contentLines.push("  \x1b[1;32mAll sessions:\x1b[0m " + discoveryUrl);
-		}
-
-		const title = " Remote access ";
-		const topBorder = `\x1b[90m╭${title}${"─".repeat(40)}╮\x1b[0m`;
-		const botBorder = `\x1b[90m╰${"─".repeat(40 + title.length)}╯\x1b[0m`;
-
-		const lines = [topBorder, ...contentLines, botBorder];
-		ctx.ui.setWidget("remote-url", lines);
+		pi.sendMessage({
+			customType: REMOTE_QR_MESSAGE_TYPE,
+			content: buildRemoteQrMessage(qrUrl),
+			display: true,
+			details: {
+				primaryUrl: info.primaryUrl,
+				remoteUrl: info.remoteUrl,
+				tailscaleUrl: info.tailscaleUrl,
+				discoveryUrl: info.discoveryUrl,
+				timestamp: Date.now(),
+			},
+		});
 	});
 }
