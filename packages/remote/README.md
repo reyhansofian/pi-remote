@@ -9,7 +9,7 @@ Remote terminal access for pi via WebSocket with Tailscale integration. Connect 
 - **Mobile-first** - Touch scroll with momentum, virtual keybar (arrows, Ctrl+C, etc.)
 - **Token authentication** - All connections require token auth (HTTP, WebSocket, API)
 - **Auth modal** - Browser prompts for token if missing/invalid, with error feedback on retry
-- **QR code** - Prints in the launching terminal and appears in the browser overlay for easy mobile scan
+- **QR code** - Prints in the launching terminal, appears in the browser overlay, and is reposted in pi chat output for easy mobile scan
 - **`/remote` command** - Restart pi in remote mode from within a running session
 - **Tailscale integration** - Automatically serves over HTTPS on your tailnet with a unique session subpath
 - **Discovery service** - Lists all active remote sessions at `/pi/` with a card UI; auto-starts on first session, auto-shuts down on last
@@ -79,11 +79,12 @@ This will:
 1. Save your current session
 2. Shut down the current pi process
 3. Restart pi wrapped in a PTY with a WebSocket server
-4. Print a QR code and URL in the launching terminal — scan from mobile or open in a browser
+4. Print the real session URL + QR code in the launching terminal
+5. Post a QR code in pi chat output once the remote session starts
 
-If you pass a URL argument, that URL is used for the QR code only (useful for demos), while the actual remote session still uses the real LAN/Tailscale URL.
+If you pass a URL argument, that URL is used only for the in-session chat QR code (useful for demos), while the actual remote session still uses the real LAN/Tailscale URL shown in the launching terminal.
 
-When running inside a remote session, the QR code is shown in chat output. The compact remote info widget is hidden by default and can be toggled with `/remote:widget`.
+When running inside a remote session, the compact remote info widget is hidden by default and can be toggled with `/remote:widget`.
 
 ---
 
