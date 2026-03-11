@@ -7,8 +7,10 @@
  *   await startRemote({ piPath: "/path/to/pi", args: ["-c"] });
  */
 
-import { execSync, spawn } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import { randomBytes as cryptoRandomBytes } from "node:crypto";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DISCOVERY_PORT } from "./discovery.js";
@@ -197,9 +199,11 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 	}
 
 	// 6. Pass the remote URL to pi so the extension can display it in the TUI
+	const restartFile = join(tmpdir(), `pi-remote-restart-${process.pid}.json`);
 	const piEnv: Record<string, string> = {
 		...(options.env ?? (process.env as Record<string, string>)),
 		PI_REMOTE_URL: url,
+		PI_REMOTE_RESTART_FILE: restartFile,
 		...(tailscaleUrl ? { PI_REMOTE_TAILSCALE_URL: tailscaleUrl } : {}),
 		...(discoveryUrl ? { PI_REMOTE_DISCOVERY_URL: discoveryUrl } : {}),
 	};
@@ -221,9 +225,27 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 	// Exit when pi exits — delay briefly so WebSocket can send the exit message to browsers
 	onPtyExit((exitCode) => {
 		setTimeout(async () => {
+			// Full remote cleanup
 			if (tsBin && tailscaleUrl) tailscaleServeOff(tsBin, tsServePath);
 			await deregisterSession(sessionId);
 			httpServer.close();
+
+			// Check if the extension requested a restart without remote
+			if (existsSync(restartFile)) {
+				try {
+					const config = JSON.parse(readFileSync(restartFile, "utf-8"));
+					unlinkSync(restartFile);
+					const result = spawnSync(config.command, config.args, {
+						stdio: "inherit",
+						cwd: config.cwd ?? process.cwd(),
+						env: config.env,
+					});
+					process.exit(result.status ?? 1);
+				} catch {
+					unlinkSync(restartFile);
+				}
+			}
+
 			process.exit(exitCode);
 		}, 500);
 	});

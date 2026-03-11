@@ -10,7 +10,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -110,28 +110,23 @@ export default function (pi: ExtensionAPI) {
 				}
 			}) as typeof process.exit;
 		} else if (action === "end-remote") {
-			// Restart plain pi without the remote wrapper — strip remote env vars
-			const piBin = resolvePiBin();
-			const piArgs = ["-e", extensionPath, ...(sessionFileForAction ? ["--session", sessionFileForAction] : [])];
-			const cleanEnv = { ...(process.env as Record<string, string>) };
-			delete cleanEnv.PI_REMOTE_URL;
-			delete cleanEnv.PI_REMOTE_TAILSCALE_URL;
-			delete cleanEnv.PI_REMOTE_DISCOVERY_URL;
+			// Write restart config for the pi-remote wrapper to pick up after cleanup
+			const restartFile = process.env.PI_REMOTE_RESTART_FILE;
+			if (restartFile) {
+				const piBin = resolvePiBin();
+				const piArgs = ["-e", extensionPath, ...(sessionFileForAction ? ["--session", sessionFileForAction] : [])];
+				const cleanEnv = { ...(process.env as Record<string, string>) };
+				delete cleanEnv.PI_REMOTE_URL;
+				delete cleanEnv.PI_REMOTE_TAILSCALE_URL;
+				delete cleanEnv.PI_REMOTE_DISCOVERY_URL;
+				delete cleanEnv.PI_REMOTE_RESTART_FILE;
 
-			const origExit = process.exit;
-			process.exit = ((_code?: number) => {
-				process.exit = origExit;
-				try {
-					const result = spawnSync(piBin, piArgs, {
-						stdio: "inherit",
-						cwd: process.cwd(),
-						env: cleanEnv,
-					});
-					origExit(result.status ?? 1);
-				} catch {
-					origExit(1);
-				}
-			}) as typeof process.exit;
+				writeFileSync(
+					restartFile,
+					JSON.stringify({ command: piBin, args: piArgs, cwd: process.cwd(), env: cleanEnv }),
+				);
+			}
+			// Just exit — the pi-remote wrapper's onPtyExit will handle cleanup + respawn
 		}
 	});
 
