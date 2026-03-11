@@ -9,91 +9,16 @@
 
 import { execSync } from "node:child_process";
 import { randomBytes as cryptoRandomBytes } from "node:crypto";
-import { statSync } from "node:fs";
 import { killPty, onPtyExit, spawnInPty } from "./pty.js";
 import { ACCESS_TOKEN, getLocalUrl, getPort, setTailscaleUrl as setServerTailscaleUrl, startServer } from "./server.js";
+import { findTailscaleBin, getTailscaleHostname, tailscaleServe, tailscaleServeOff } from "./tailscale.js";
 import { setupTerminalWebSocket } from "./ws.js";
 
 export { ACCESS_TOKEN, getLocalUrl, getPort };
 
-// ---------- Tailscale integration ----------
-
-const TAILSCALE_PATHS = [
-	"/usr/local/bin/tailscale",
-	"/usr/bin/tailscale",
-	"/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-];
-
-function findTailscaleBin(): string | null {
-	// Check PATH first
-	for (const cmd of ["which tailscale", "command -v tailscale"]) {
-		try {
-			const result = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-			if (result) {
-				process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m found via "${cmd}": ${result}\n`);
-				return result;
-			}
-		} catch {}
-	}
-	// Check known locations
-	for (const p of TAILSCALE_PATHS) {
-		try {
-			if (statSync(p)) {
-				process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m found at known path: ${p}\n`);
-				return p;
-			}
-		} catch {}
-	}
-	process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m not found in PATH or known locations\n`);
-	return null;
-}
-
-function getTailscaleHostname(bin: string): string | null {
-	try {
-		const json = execSync(`${JSON.stringify(bin)} status --json`, {
-			encoding: "utf-8",
-			stdio: ["pipe", "pipe", "pipe"],
-		});
-		const dnsName: string = JSON.parse(json)?.Self?.DNSName;
-		// Remove trailing dot
-		return dnsName?.replace(/\.$/, "") ?? null;
-	} catch {
-		return null;
-	}
-}
-
 /** Generate a short session ID for the serve path */
 function generateSessionId(): string {
 	return cryptoRandomBytes(4).toString("hex"); // 8 hex chars
-}
-
-function tailscaleServe(bin: string, port: number, path: string): boolean {
-	try {
-		execSync(
-			`${JSON.stringify(bin)} serve --bg --https 443 --set-path ${JSON.stringify(path)} http://localhost:${port}`,
-			{ encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-		);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function tailscaleServeOff(bin: string, path: string): void {
-	try {
-		execSync(`${JSON.stringify(bin)} serve --https 443 --set-path ${JSON.stringify(path)} off`, {
-			encoding: "utf-8",
-			stdio: ["pipe", "pipe", "pipe"],
-		});
-	} catch {}
-}
-
-export function getTailscaleUrl(): string | null {
-	const bin = findTailscaleBin();
-	if (!bin) return null;
-	const hostname = getTailscaleHostname(bin);
-	if (!hostname) return null;
-	return `https://${hostname}`;
 }
 
 export interface RemoteOptions {
