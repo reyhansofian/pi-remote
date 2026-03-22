@@ -8,6 +8,11 @@
 		"packages/*",
 		"packages/remote/web"
 	],
+	"pi": {
+		"extensions": [
+			"./packages/remote/extension/index.ts"
+		]
+	},
 	"scripts": {
 		"clean": "npm run clean --workspaces --if-present",
 		"build": "npm run build --workspaces --if-present",
