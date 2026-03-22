@@ -365,6 +365,7 @@ function submitToken(): void {
 	if (!token) return;
 	authOverlay.classList.add("hidden");
 	tv.setToken(token);
+	tv.focus();
 	// Reload remote URL info now that we have a valid token
 	loadRemoteUrl();
 }
@@ -427,6 +428,24 @@ if (keybar) {
 
 		keybar.appendChild(btn);
 	}
+
+	const pasteBtn = document.createElement("button");
+	pasteBtn.textContent = "Paste";
+	pasteBtn.addEventListener("touchstart", () => {
+		pasteBtn.style.background = "#2e2e2e";
+	}, { passive: true });
+	pasteBtn.addEventListener("touchend", async (e) => {
+		e.preventDefault();
+		pasteBtn.style.removeProperty("background");
+		try {
+			const text = await navigator.clipboard.readText();
+			if (text) tv.sendInput(text);
+		} catch {
+			const text = prompt("Paste your text:");
+			if (text) tv.sendInput(text);
+		}
+	});
+	keybar.appendChild(pasteBtn);
 }
 
 // ─── Remote overlay ───────────────────────────────────────────────────────────
@@ -493,15 +512,20 @@ remoteBtn.addEventListener("click", () => {
 
 document.getElementById("close-btn")?.addEventListener("click", () => {
 	overlay.classList.add("hidden");
+	tv.focus();
 });
 
 overlay.addEventListener("click", (e) => {
-	if (e.target === overlay) overlay.classList.add("hidden");
+	if (e.target === overlay) {
+		overlay.classList.add("hidden");
+		tv.focus();
+	}
 });
 
 document.addEventListener("keydown", (e) => {
 	if (e.key === "Escape" && !overlay.classList.contains("hidden")) {
 		overlay.classList.add("hidden");
+		tv.focus();
 	}
 });
 

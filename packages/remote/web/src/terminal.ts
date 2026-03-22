@@ -409,6 +409,10 @@ export class TerminalView {
 		this.terminal.scrollToBottom();
 	}
 
+	focus(): void {
+		this.terminal.focus();
+	}
+
 	onScroll(cb: () => void): void {
 		this.terminal.onScroll(cb);
 		this.terminal.onWriteParsed(cb);
