@@ -155,6 +155,7 @@ style.textContent = `
   }
   .url-row:hover .copy-btn { color: #aaa; }
   .url-row.copied .copy-btn { color: #4ade80; }
+  .label-cloudflare { color: #f6821f; }
   .label-tailscale { color: #c084fc; }
   .label-lan { color: #22d3ee; }
   .label-token { color: #facc15; }
@@ -457,11 +458,12 @@ async function loadRemoteUrl(): Promise<void> {
 		const tokenParam = token ? `?token=${token}` : "";
 		const basePath = window.location.pathname.replace(/\/$/, "");
 		const res = await fetch(`${basePath}/api/local-url${tokenParam}`);
-		const data = (await res.json()) as { url: string; tailscaleUrl?: string };
+		const data = (await res.json()) as { url: string; tailscaleUrl?: string; cloudflaredUrl?: string };
 		const lanUrl = data.url;
 		const tsUrl = data.tailscaleUrl;
-		// Prefer Tailscale URL for QR code if available
-		const qrUrl = tsUrl ?? lanUrl;
+		const cfUrl = data.cloudflaredUrl;
+		// Prefer cloudflared > tailscale > LAN for QR code
+		const qrUrl = cfUrl ?? tsUrl ?? lanUrl;
 
 		const urlEl = document.getElementById("remote-url")!;
 		urlEl.innerHTML = "";
@@ -483,11 +485,12 @@ async function loadRemoteUrl(): Promise<void> {
 			urlEl.appendChild(row);
 		};
 
+		if (cfUrl) makeRow("label-cloudflare", "Cloudflare:", cfUrl);
 		if (tsUrl) makeRow("label-tailscale", "Tailscale:", tsUrl);
 		makeRow("label-lan", "LAN:", lanUrl);
 
 		// Extract and show token
-		const tokenMatch = (tsUrl ?? lanUrl).match(/[?&]token=([^&]+)/);
+		const tokenMatch = (cfUrl ?? tsUrl ?? lanUrl).match(/[?&]token=([^&]+)/);
 		if (tokenMatch) makeRow("label-token", "Token:", tokenMatch[1]);
 
 		const canvas = document.getElementById("qr-canvas") as HTMLCanvasElement;

@@ -17,6 +17,7 @@
 
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { findCloudflaredBin, startCloudflaredTunnel, stopCloudflaredTunnel } from "./cloudflared.js";
 import { findTailscaleBin, getTailscaleHostname, tailscaleServe, tailscaleServeOff } from "./tailscale.js";
 
 export const DISCOVERY_PORT = 7008;
@@ -36,6 +37,7 @@ let server: Server | null = null;
 let tsBin: string | null = null;
 let tsHostname: string | null = null;
 let tailscaleUrl: string | null = null;
+let cloudflaredUrl: string | null = null;
 const TS_SERVE_PATH = "/pi/";
 
 // ---------- Helpers ----------
@@ -68,7 +70,7 @@ function sessionCard(s: Session, baseUrl: string, token: string): string {
 }
 
 function renderPage(): string {
-	const baseUrl = tailscaleUrl ? `https://${tsHostname}` : `http://127.0.0.1:${DISCOVERY_PORT}`;
+	const baseUrl = cloudflaredUrl ?? (tailscaleUrl ? `https://${tsHostname}` : `http://127.0.0.1:${DISCOVERY_PORT}`);
 	const sessionList = Array.from(sessions.values()).sort(
 		(a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
 	);
@@ -134,6 +136,7 @@ p{font-size:12px;color:#888}
 // ---------- Request handler ----------
 
 function shutdown(): void {
+	stopCloudflaredTunnel();
 	if (tsBin && tailscaleUrl) tailscaleServeOff(tsBin, TS_SERVE_PATH);
 	server?.close();
 	process.exit(0);
@@ -213,8 +216,18 @@ export function startDiscoveryService(): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const httpServer = createServer(handleRequest);
 
-		httpServer.listen(DISCOVERY_PORT, HOST, () => {
+		httpServer.listen(DISCOVERY_PORT, HOST, async () => {
 			server = httpServer;
+
+			// Set up cloudflared quick tunnel
+			const cfBin = findCloudflaredBin();
+			if (cfBin) {
+				try {
+					cloudflaredUrl = await startCloudflaredTunnel(DISCOVERY_PORT);
+				} catch {
+					// cloudflared not available or failed
+				}
+			}
 
 			// Set up Tailscale route for /pi/
 			tsBin = findTailscaleBin();

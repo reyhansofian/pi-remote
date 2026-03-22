@@ -49,6 +49,16 @@ export function getTailscaleUrl(): string | null {
 	return tailscaleUrl;
 }
 
+let cloudflaredUrl: string | null = null;
+
+export function setCloudflaredUrl(url: string): void {
+	cloudflaredUrl = url;
+}
+
+export function getCloudflaredUrl(): string | null {
+	return cloudflaredUrl;
+}
+
 export function getPort(): number {
 	return actualPort;
 }
@@ -136,7 +146,9 @@ async function handleRequest(
 	// API: return the LAN URL with token (for QR code generation in the UI)
 	if (url === "/api/local-url" && method === "GET") {
 		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ url: getLocalUrl(), tailscaleUrl: getTailscaleUrl() }));
+		res.end(
+			JSON.stringify({ url: getLocalUrl(), tailscaleUrl: getTailscaleUrl(), cloudflaredUrl: getCloudflaredUrl() }),
+		);
 		return;
 	}
 

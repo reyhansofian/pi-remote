@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { findCloudflaredBin, startCloudflaredTunnel, stopCloudflaredTunnel } from "./cloudflared.js";
 import { DISCOVERY_PORT } from "./discovery.js";
 import { killPty, onPtyExit, spawnInPty } from "./pty.js";
 import {
@@ -21,6 +22,7 @@ import {
 	getLocalUrl,
 	getPort,
 	setAccessToken,
+	setCloudflaredUrl as setServerCloudflaredUrl,
 	setTailscaleUrl as setServerTailscaleUrl,
 	startServer,
 } from "./server.js";
@@ -109,10 +111,21 @@ function renderTerminalQr(url: string): string {
 	return rendered;
 }
 
-function printRemoteAccessInfo(primaryUrl: string, lanUrl: string, tailscaleUrl: string | null): void {
+function printRemoteAccessInfo(
+	primaryUrl: string,
+	lanUrl: string,
+	tailscaleUrl: string | null,
+	cloudflaredUrl: string | null,
+): void {
 	process.stderr.write(`\n\x1b[1;36m[remote]\x1b[0m Scan or open: ${primaryUrl}\n`);
-	if (tailscaleUrl && tailscaleUrl !== lanUrl) {
-		process.stderr.write(`\x1b[1;36m[remote]\x1b[0m LAN fallback: ${lanUrl}\n`);
+	if (cloudflaredUrl && cloudflaredUrl !== primaryUrl) {
+		process.stderr.write(`\x1b[1;36m[remote]\x1b[0m Cloudflare: ${cloudflaredUrl}\n`);
+	}
+	if (tailscaleUrl && tailscaleUrl !== primaryUrl) {
+		process.stderr.write(`\x1b[1;36m[remote]\x1b[0m Tailscale: ${tailscaleUrl}\n`);
+	}
+	if (lanUrl !== primaryUrl) {
+		process.stderr.write(`\x1b[1;36m[remote]\x1b[0m LAN: ${lanUrl}\n`);
 	}
 
 	const qr = renderTerminalQr(primaryUrl);
@@ -135,6 +148,10 @@ export interface RemoteOptions {
 	cwd?: string;
 	/** Environment variables forwarded to pi. Default: process.env */
 	env?: Record<string, string>;
+	/** Disable cloudflared tunnel */
+	disableCloudflared?: boolean;
+	/** Disable Tailscale serve */
+	disableTailscale?: boolean;
 }
 
 /**
@@ -192,28 +209,47 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 	// 3. Register this session with the discovery service
 	await registerSession(sessionId, port, cwd);
 
-	// 4. Try to set up Tailscale serve for this session's subpath
-	const tsBin = findTailscaleBin();
-	let tailscaleUrl: string | null = null;
-	const tsServePath = `/pi/${sessionId}/`;
-	process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m binary: ${tsBin ?? "not found"}\n`);
-	if (tsBin) {
-		const hostname = getTailscaleHostname(tsBin);
-		process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m hostname: ${hostname ?? "not found"}\n`);
-		if (hostname) {
-			const serveCmd = `${JSON.stringify(tsBin)} serve --bg --https 443 --set-path ${JSON.stringify(tsServePath)} http://localhost:${port}`;
-			process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m running: ${serveCmd}\n`);
-			const served = tailscaleServe(tsBin, port, tsServePath);
-			process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m serve result: ${served ? "ok" : "failed"}\n`);
-			if (served) {
-				tailscaleUrl = `https://${hostname}${tsServePath}?token=${token}`;
-				setServerTailscaleUrl(tailscaleUrl);
-				process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m url: ${tailscaleUrl}\n`);
+	// 4. Try cloudflared quick tunnel (public internet access)
+	let cloudflaredUrl: string | null = null;
+	if (!options.disableCloudflared) {
+		const cfBin = findCloudflaredBin();
+		process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m binary: ${cfBin ?? "not found"}\n`);
+		if (cfBin) {
+			try {
+				process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m starting quick tunnel for localhost:${port}...\n`);
+				cloudflaredUrl = await startCloudflaredTunnel(port);
+				setServerCloudflaredUrl(cloudflaredUrl);
+				process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m url: ${cloudflaredUrl}\n`);
+			} catch (err) {
+				process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m failed: ${(err as Error).message}\n`);
 			}
 		}
 	}
 
-	// 5. Build discovery URL for the TUI widget
+	// 5. Try to set up Tailscale serve for this session's subpath
+	const tsBin = !options.disableTailscale ? findTailscaleBin() : null;
+	let tailscaleUrl: string | null = null;
+	const tsServePath = `/pi/${sessionId}/`;
+	if (!options.disableTailscale) {
+		process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m binary: ${tsBin ?? "not found"}\n`);
+		if (tsBin) {
+			const hostname = getTailscaleHostname(tsBin);
+			process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m hostname: ${hostname ?? "not found"}\n`);
+			if (hostname) {
+				const serveCmd = `${JSON.stringify(tsBin)} serve --bg --https 443 --set-path ${JSON.stringify(tsServePath)} http://localhost:${port}`;
+				process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m running: ${serveCmd}\n`);
+				const served = tailscaleServe(tsBin, port, tsServePath);
+				process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m serve result: ${served ? "ok" : "failed"}\n`);
+				if (served) {
+					tailscaleUrl = `https://${hostname}${tsServePath}?token=${token}`;
+					setServerTailscaleUrl(tailscaleUrl);
+					process.stderr.write(`\x1b[1;35m[tailscale]\x1b[0m url: ${tailscaleUrl}\n`);
+				}
+			}
+		}
+	}
+
+	// 6. Build discovery URL for the TUI widget
 	let discoveryUrl: string | null = null;
 	if (tsBin && tailscaleUrl) {
 		// Extract base Tailscale URL (hostname) from the session URL
@@ -223,19 +259,20 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 		}
 	}
 
-	// 6. Pass the remote URL to pi so the extension can display it in the TUI
+	// 7. Pass the remote URL to pi so the extension can display it in the TUI
 	const restartFile = join(tmpdir(), `pi-remote-restart-${process.pid}.json`);
 	const piEnv: Record<string, string> = {
 		...(options.env ?? (process.env as Record<string, string>)),
 		PI_REMOTE_URL: url,
 		PI_REMOTE_RESTART_FILE: restartFile,
+		...(cloudflaredUrl ? { PI_REMOTE_CLOUDFLARED_URL: cloudflaredUrl } : {}),
 		...(tailscaleUrl ? { PI_REMOTE_TAILSCALE_URL: tailscaleUrl } : {}),
 		...(discoveryUrl ? { PI_REMOTE_DISCOVERY_URL: discoveryUrl } : {}),
 	};
 
-	printRemoteAccessInfo(tailscaleUrl ?? url, url, tailscaleUrl);
+	printRemoteAccessInfo(cloudflaredUrl ?? tailscaleUrl ?? url, url, tailscaleUrl, cloudflaredUrl);
 
-	// 7. Spawn pi in the PTY with local terminal attached
+	// 8. Spawn pi in the PTY with local terminal attached
 	const cols = process.stdout.columns || 120;
 	const rows = process.stdout.rows || 30;
 
@@ -253,6 +290,7 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 	onPtyExit((exitCode) => {
 		setTimeout(async () => {
 			// Full remote cleanup
+			stopCloudflaredTunnel();
 			if (tsBin && tailscaleUrl) tailscaleServeOff(tsBin, tsServePath);
 			await deregisterSession(sessionId);
 			httpServer.close();
@@ -279,6 +317,7 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 
 	// Register cleanup
 	const cleanup = (): void => {
+		stopCloudflaredTunnel();
 		if (tsBin && tailscaleUrl) tailscaleServeOff(tsBin, tsServePath);
 		deregisterSession(sessionId).catch(() => {});
 		killPty();

@@ -110,7 +110,12 @@ function getRemoteInfo() {
 }
 
 function buildRemoteWidgetLines(info: NonNullable<ReturnType<typeof getRemoteInfo>>): string[] {
+	const cloudflaredUrl = process.env.PI_REMOTE_CLOUDFLARED_URL;
+
 	const contentLines: string[] = [];
+	if (cloudflaredUrl) {
+		contentLines.push("  \x1b[1;33mCloudflare:\x1b[0m " + cloudflaredUrl);
+	}
 	if (info.tailscaleUrl) {
 		contentLines.push("  \x1b[1;35mTailscale:\x1b[0m " + info.tailscaleUrl);
 	}
