@@ -79,6 +79,9 @@ function buildBorderedWidget(title: string, contentLines: string[]): string[] {
 
 function buildRemoteQrMessage(info: NonNullable<ReturnType<typeof getRemoteInfo>>, qrUrl: string): string {
 	const lines: string[] = [];
+	if (info.cloudflaredUrl) {
+		lines.push(`  Cloudflare:     ${info.cloudflaredUrl}`);
+	}
 	if (info.tailscaleUrl) {
 		lines.push(`  Tailscale:      ${info.tailscaleUrl}`);
 	}
@@ -96,12 +99,14 @@ function buildRemoteQrMessage(info: NonNullable<ReturnType<typeof getRemoteInfo>
 function getRemoteInfo() {
 	const remoteUrl = process.env.PI_REMOTE_URL;
 	if (!remoteUrl) return null;
+	const cloudflaredUrl = process.env.PI_REMOTE_CLOUDFLARED_URL;
 	const tailscaleUrl = process.env.PI_REMOTE_TAILSCALE_URL;
 	const discoveryUrl = process.env.PI_REMOTE_DISCOVERY_URL;
-	const primaryUrl = tailscaleUrl ?? remoteUrl;
+	const primaryUrl = cloudflaredUrl ?? tailscaleUrl ?? remoteUrl;
 	const tokenMatch = primaryUrl.match(/[?&]token=([^&]+)/);
 	return {
 		remoteUrl,
+		cloudflaredUrl,
 		tailscaleUrl,
 		discoveryUrl,
 		primaryUrl,
@@ -136,7 +141,7 @@ export default function (pi: ExtensionAPI) {
 	let pendingAction: "remote" | "end-remote" | null = null;
 	let sessionFileForAction: string | undefined;
 	let pendingQrOverrideUrl: string | undefined;
-	let widgetVisible = false;
+	let widgetVisible = true;
 
 	pi.registerMessageRenderer(REMOTE_QR_MESSAGE_TYPE, (message, _options, theme) => {
 		const content = typeof message.content === "string" ? message.content : "";
@@ -262,6 +267,7 @@ export default function (pi: ExtensionAPI) {
 				const piArgs = ["-e", extensionPath, ...(sessionFileForAction ? ["--session", sessionFileForAction] : [])];
 				const cleanEnv = { ...(process.env as Record<string, string>) };
 				delete cleanEnv.PI_REMOTE_URL;
+				delete cleanEnv.PI_REMOTE_CLOUDFLARED_URL;
 				delete cleanEnv.PI_REMOTE_TAILSCALE_URL;
 				delete cleanEnv.PI_REMOTE_DISCOVERY_URL;
 				delete cleanEnv.PI_REMOTE_RESTART_FILE;
