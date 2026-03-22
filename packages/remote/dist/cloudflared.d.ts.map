@@ -1,0 +1,1 @@
+{"version":3,"file":"cloudflared.d.ts","sourceRoot":"","sources":["../src/cloudflared.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAUH,wBAAgB,kBAAkB,IAAI,MAAM,GAAG,IAAI,CAalD;AAED;;;;GAIG;AACH,wBAAgB,sBAAsB,CAAC,IAAI,EAAE,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC,CA4DpE;AAED,wBAAgB,qBAAqB,IAAI,IAAI,CAU5C;AAED,wBAAgB,iBAAiB,IAAI,MAAM,GAAG,IAAI,CAEjD"}
