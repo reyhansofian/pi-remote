@@ -223,7 +223,7 @@ export function startDiscoveryService(): Promise<void> {
 			const cfBin = findCloudflaredBin();
 			if (cfBin) {
 				try {
-					cloudflaredUrl = await startCloudflaredTunnel(DISCOVERY_PORT);
+					cloudflaredUrl = `${await startCloudflaredTunnel(DISCOVERY_PORT)}?token=${TOKEN}`;
 				} catch {
 					// cloudflared not available or failed
 				}

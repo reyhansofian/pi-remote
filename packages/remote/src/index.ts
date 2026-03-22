@@ -217,7 +217,8 @@ export async function startRemote(options: RemoteOptions = {}): Promise<() => vo
 		if (cfBin) {
 			try {
 				process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m starting quick tunnel for localhost:${port}...\n`);
-				cloudflaredUrl = await startCloudflaredTunnel(port);
+				const rawCfUrl = await startCloudflaredTunnel(port);
+				cloudflaredUrl = `${rawCfUrl}?token=${token}`;
 				setServerCloudflaredUrl(cloudflaredUrl);
 				process.stderr.write(`\x1b[1;33m[cloudflared]\x1b[0m url: ${cloudflaredUrl}\n`);
 			} catch (err) {
